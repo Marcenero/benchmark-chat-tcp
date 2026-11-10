@@ -1,55 +1,63 @@
-# Benchmark TCP — adaptação do chat do ZIP
+# Benchmark de throughput TCP
 
-Projeto adaptado de `chat_server.c` e `chat_client.c` da aplicação de chat TCP fornecida. Os originais permanecem preservados em `originais/`. A implementação de benchmark se baseia também em `chat_server2.c` e `chat_client2.c` fornecidos, com correções e automação de experimentos.
+Este projeto parte da aplicação de chat TCP, formada por `chat_server.c` e `chat_client.c`, e adapta a comunicação para medir a quantidade de dados que um servidor consegue receber de vários clientes ao mesmo tempo. Os arquivos do chat original foram mantidos em `originais/`, para facilitar a comparação com a versão modificada. Também foram aproveitadas as implementações de `chat_server2.c` e `chat_client2.c`, com correções e scripts para executar os experimentos.
 
-## 1. Objetivo
+## 1. O que o projeto mede
 
-Medir o **throughput agregado de recepção no servidor** para 1 a 10 clientes transmitindo simultaneamente por TCP. Dados são gerados automaticamente e enviados sem teclado; cada cliente é atendido por uma thread do servidor. O relatório é calculado com bytes que as chamadas `recv()` retornam **dentro de uma janela de medição compartilhada**, e não com bytes enfileirados em `send()` pelos clientes.
+O teste avalia o throughput agregado de recepção do servidor TCP com 1 a 10 clientes simultâneos. Cada cliente envia blocos de bytes gerados automaticamente, sem precisar digitar mensagens. No servidor, uma thread recebe os dados de cada conexão.
+
+A taxa é calculada com a soma dos bytes que as chamadas `recv()` entregam à aplicação durante um mesmo intervalo de medição. Os dados que o cliente coloca na fila de envio com `send()` são registrados separadamente e não entram nesse cálculo.
 
 ## 2. Requisitos
 
-- Linux ou WSL com `gcc`, `make`, `python3` (POSIX/C11/pthreads).
-- Para gerar gráfico: `python3 -m pip install matplotlib` (opcional para compilação/testes).
-- Para teste real em duas máquinas: ambas na mesma rede, `chat_server` compilado no servidor e `chat_client` compilado na máquina de clientes; no modo automatizado remoto, SSH com autenticação sem senha interativa e SSH servidor ativo **na máquina cliente**.
+Para compilar e executar o projeto, é necessário um ambiente Linux ou WSL com `gcc`, `make` e `python3`. O código utiliza C11 e recursos POSIX, incluindo `pthread`.
 
-No Windows nativo, este código POSIX não compila diretamente pelo MSVC. Use Linux/WSL; caso meça uma rede física entre máquinas, considere o possível efeito da virtualização/NAT do WSL.
+O gráfico de resultados depende da biblioteca `matplotlib`. Caso ela ainda não esteja instalada, use:
+
+```bash
+python3 -m pip install matplotlib
+```
+
+Para executar os testes em duas máquinas, as duas precisam estar na mesma rede. O servidor deve ter o executável `chat_server`, e a máquina responsável por gerar as conexões deve ter `chat_client`. Na execução automatizada entre máquinas, o computador servidor também precisa conseguir acessar a máquina cliente por SSH sem solicitar senha durante a execução. Por isso, o serviço SSH deve estar ativo na máquina cliente.
+
+O código não foi preparado para compilação direta pelo MSVC no Windows. Nesse sistema, utilize Linux ou WSL. Se a intenção for medir uma rede física, registre o uso de WSL no relatório, pois a virtualização e a configuração de rede podem influenciar os resultados.
 
 ## 3. Compilação
 
-Dentro da pasta `benchmark_chat_tcp`:
+Abra o terminal na pasta `benchmark_chat_tcp` e execute:
 
 ```bash
 make
 ```
 
-Produz `chat_server` e `chat_client` (as versões **modificadas**, voltadas a benchmark). Outros alvos:
+O comando compila `chat_server` e `chat_client`, que são as versões adaptadas para o benchmark. Para compilar o chat interativo preservado ou remover os executáveis, utilize:
 
 ```bash
 make original   # opcional, compila o chat interativo preservado
 make clean      # remove executaveis
 ```
 
-## 4. Execução manual básica (mesma máquina)
+## 4. Teste manual na mesma máquina
 
-Abra um terminal para o servidor:
+Abra um terminal e inicie o servidor:
 
 ```bash
 ./chat_server 5000 3 15 65536 2 127.0.0.1
 ```
 
-Argumentos do servidor: `PORTA CLIENTES SEGUNDOS_MEDICAO [BLOCO_BYTES] [AQUECIMENTO_SEGUNDOS] [IP_BIND]`. O exemplo solicita 3 clientes, 15 s de medição, blocos de 65.536 bytes e 2 s de aquecimento.
+O servidor recebe os argumentos na ordem `PORTA CLIENTES SEGUNDOS_MEDICAO [BLOCO_BYTES] [AQUECIMENTO_SEGUNDOS] [IP_BIND]`. Nesse exemplo, ele espera três clientes, realiza 15 segundos de medição e utiliza blocos de 65.536 bytes, com dois segundos iniciais de aquecimento.
 
-Abra três outros terminais, executando em cada um:
+Depois, abra mais três terminais e execute o comando abaixo em cada um:
 
 ```bash
 ./chat_client 127.0.0.1 5000
 ```
 
-O servidor imprime JSON contendo `bytes_received`, `mbps`, `per_client`, consumo de CPU e os parâmetros. Cada cliente apresenta o total de bytes aceitos em `send()` e a quantidade registrada pelo servidor.
+Quando todos estiverem conectados, o servidor libera o envio de dados. Ao terminar, ele apresenta um JSON com a quantidade total de bytes recebidos (`bytes_received`), a taxa agregada (`mbps`), as medições por cliente (`per_client`) e o consumo de CPU. Cada cliente também informa quantos bytes foram aceitos em suas chamadas `send()` e quantos o servidor contabilizou.
 
-## 5. Execução automática: 1 a 10 clientes, 5 repetições
+## 5. Testes automáticos de 1 a 10 clientes
 
-Para rodar em **uma máquina** usando TCP no endereço de loopback:
+O script `run_experiments.py` executa os cenários com 1 a 10 clientes e repete cada cenário cinco vezes. Para testar na própria máquina, usando o endereço de loopback, execute:
 
 ```bash
 python3 run_experiments.py \
@@ -58,38 +66,33 @@ python3 run_experiments.py \
   --block 65536 --cooldown 2
 ```
 
-**Atenção:** quando servidor e clientes usam `127.0.0.1`, mede-se TCP/CPU/memória dentro da própria máquina; a capacidade de Ethernet/Wi-Fi **não** é testada.
+Como o endereço utilizado nesse caso é `127.0.0.1`, os dados circulam pela pilha TCP do próprio sistema operacional. Essa configuração permite observar o desempenho local de processamento e comunicação, mas não mede a capacidade de uma conexão física Ethernet ou Wi-Fi.
 
-O script sorteia a ordem dos cenários (semente fixa 2026), executa cada cenário a quantidade de vezes especificada, faz pausa entre execuções e registra resultados inválidos sem misturá-los às médias.
+Para evitar que a sequência dos testes favoreça sempre os mesmos cenários, o script sorteia a ordem de execução usando a semente fixa 2026. Ele também respeita um intervalo de descanso entre medições e registra eventuais testes inválidos, que ficam fora do cálculo das médias.
 
-Arquivos gerados na pasta `resultados_DATA_HORA/`:
+Os arquivos são salvos em uma pasta chamada `resultados_DATA_HORA/`:
 
-- `configuracao.json`: parâmetros do experimento;
-- `dados_brutos.csv`: throughput, bytes, CPU e validade de **cada repetição**;
-- `resultados_detalhados.jsonl`: JSON bruto do servidor e dados dos clientes, para auditoria.
+- `configuracao.json`: parâmetros utilizados na execução;
+- `dados_brutos.csv`: bytes recebidos, throughput, uso de CPU e validade de cada repetição;
+- `resultados_detalhados.jsonl`: saídas completas do servidor e informações dos clientes, úteis para conferir as medições.
 
-Após terminar, gere a tabela e o gráfico:
+Depois que os testes terminarem, gere a tabela e o gráfico com:
 
 ```bash
 python3 plot_results.py resultados_DATA_HORA/dados_brutos.csv
 ```
 
-Substitua `resultados_DATA_HORA` pela pasta que apareceu no terminal. A análise gera:
+Troque `resultados_DATA_HORA` pelo nome da pasta criada na execução. O script produz `resumo.csv`, com média, mediana, desvio-padrão e máximo observado para cada quantidade de clientes; `tabela_resultados.md`, com uma tabela para o relatório; e `grafico_throughput.png`, com o gráfico de throughput em função do número de clientes. O gráfico inclui média, desvio-padrão e máximo observado, desde que `matplotlib` esteja disponível.
 
-- `resumo.csv`: média, mediana, desvio-padrão e máximo observado por número de clientes;
-- `tabela_resultados.md`: tabela formatada para colar no relatório;
-- `grafico_throughput.png`: gráfico de throughput × número de clientes, com média ± desvio-padrão e máximo observado (se houver `matplotlib`).
+O maior resultado entre as cinco repetições válidas de um cenário será apresentado como máximo observado. Esse valor ajuda a estimar o pico atingido nas condições do teste, mas não estabelece o limite físico absoluto da rede ou do computador.
 
-O **máximo observado** dentre 5 repetições é o dado diretamente solicitado pelo enunciado. Ele é uma estimativa experimental do pico, não uma prova do limite físico máximo da rede.
+## 6. Testes com servidor e clientes em máquinas diferentes
 
-## 6. Testes em máquinas diferentes (recomendado)
+Para medir a transmissão em uma rede física, uma opção é utilizar duas máquinas Linux ligadas por Ethernet, de preferência no mesmo switch ou roteador. Neste exemplo, o servidor tem o endereço `192.168.1.10` e a máquina que executa os clientes usa `192.168.1.20`.
 
-Exemplo de topologia: servidor Linux = `192.168.1.10`; máquina geradora dos clientes = `192.168.1.20`, via **Ethernet cabeada**, idealmente no mesmo switch ou roteador. Evite Wi-Fi, VPN e outras transferências intensas durante os testes.
+Antes de começar, compile o projeto nas duas máquinas e confirme que a porta TCP escolhida está liberada pelos firewalls. Também é recomendável evitar VPN, Wi-Fi e outras transferências de grande volume durante a coleta, para reduzir a interferência nas medições.
 
-1. Compile com `make` em **ambas** as máquinas (transfira a pasta para a máquina cliente).
-2. Confirme que o cliente consegue conectar na porta escolhida e que os firewalls permitem tráfego TCP entre elas.
-3. Na máquina cliente, configure acesso SSH para que o **servidor** possa iniciar os processos clientes de maneira automatizada (`ssh usuario@192.168.1.20` sem senha interativa). Esse acesso é apenas para orquestração.
-4. Na máquina **servidora**, execute:
+Na máquina cliente, configure o SSH de forma que o computador servidor consiga iniciar os processos remotamente usando `ssh usuario@192.168.1.20`, sem autenticação interativa. Em seguida, execute o script abaixo na máquina servidora:
 
 ```bash
 python3 run_experiments.py \
@@ -100,13 +103,15 @@ python3 run_experiments.py \
   --remote-dir /home/usuario/benchmark_chat_tcp
 ```
 
-`--remote-dir` indica a localização da pasta compilada **na máquina cliente**. O SSH inicia os N processos ao mesmo tempo aproximado; eles aguardam a autorização de início do servidor para sincronizar a medição. Não compartilhe SSH de uma máquina fora de sua confiança e limite o acesso pela rede local.
+O argumento `--remote-dir` indica onde está a pasta do projeto já compilado na máquina cliente. O SSH inicia a quantidade necessária de processos para cada cenário. Depois de conectados, os clientes aguardam a autorização do servidor, que define a janela de medição para todos.
 
-**Alternativa sem SSH**: rode `./chat_server 5000 N 15 65536 2 0.0.0.0` na máquina servidora e execute N cópias de `./chat_client 192.168.1.10 5000` na outra máquina. Repita para cada N e guarde o JSON do servidor. Para obter mais confiabilidade e 50 testes, a automação via SSH é preferível.
+Mantenha o acesso SSH restrito à rede e às máquinas autorizadas.
 
-## 7. Coletar hardware, sistema operacional e rede
+Também é possível executar o experimento manualmente, sem SSH: inicie `./chat_server 5000 N 15 65536 2 0.0.0.0` na máquina servidora e abra N processos com `./chat_client 192.168.1.10 5000` na máquina cliente. Repita o procedimento para cada valor de N e guarde o JSON produzido pelo servidor. Para a bateria de 50 execuções, a automação ajuda a manter o mesmo procedimento em todos os cenários.
 
-Em **cada máquina participante**, execute:
+## 7. Informações do ambiente experimental
+
+O relatório precisa identificar os equipamentos utilizados. Execute o script de coleta em cada máquina:
 
 ```bash
 bash coletar_ambiente.sh > ambiente_servidor.txt
@@ -114,25 +119,27 @@ bash coletar_ambiente.sh > ambiente_servidor.txt
 bash coletar_ambiente.sh > ambiente_cliente.txt
 ```
 
-O script registra CPU, RAM, SO, GCC, interfaces de rede e, quando disponível, a velocidade nominal da interface. Preencha no relatório também o **meio de conexão real** (loopback, Ethernet 1 Gbps, Wi-Fi etc.), topologia, quantidade de cores, informações do switch, e se a máquina usa contêiner/VM/WSL. Dados de rede sem acesso ao hardware podem não ser detectados automaticamente.
+O script registra informações de processador, memória RAM, sistema operacional, compilador e interfaces de rede. Quando possível, também consulta a velocidade nominal da interface.
 
-## 8. Métrica e cuidados de validade
+Confira essas informações antes de incluí-las no relatório. Registre ainda o meio utilizado (loopback, Ethernet ou Wi-Fi), a topologia, a quantidade de núcleos do processador, a presença de switch ou roteador e o uso de máquina virtual, contêiner ou WSL. Nem todos esses dados podem ser identificados automaticamente.
 
-O servidor cria uma thread de recepção por cliente, com tempo monotônico (`CLOCK_MONOTONIC`). As threads contam bytes retornados por `recv()` **somente durante a janela `[begin, end)`**. Após a janela, o servidor soma os contadores e divide pela duração nominal definida no teste:
+## 8. Como a taxa de transmissão é calculada
+
+O servidor cria uma thread receptora para cada cliente e usa `CLOCK_MONOTONIC` para controlar o intervalo de medição. Cada thread soma os bytes recebidos por `recv()` somente quando a recepção ocorre dentro da janela `[begin, end)`. Ao final, o servidor soma os contadores e calcula:
 
 ```text
 throughput_agregado_Mbps = (8 * soma(bytes_recebidos_pelas_threads)) / (duracao_segundos * 1_000_000)
 ```
 
-Não conte bytes das chamadas `send()` como bytes efetivamente recebidos: os bytes enfileirados no cliente podem diferir. Não some picos de velocidades individuais obtidos em janelas diferentes.
+O fator 8 converte bytes em bits, e a divisão por `1_000_000` apresenta o resultado em Mbps. O cálculo considera o mesmo período para todos os clientes, pois cada cenário mede a taxa agregada do servidor.
 
-Para comparabilidade: use sempre a mesma configuração de compilação, tamanho de bloco, duração, aquecimento, máquinas, rede e condições ambientais. Evite executar outros benchmarks simultaneamente, reinicie o servidor a cada repetição, mantenha períodos de descanso e documente interferências.
+Para comparar os resultados, mantenha iguais as opções de compilação, o tamanho dos blocos, a duração, o tempo de aquecimento, as máquinas e a configuração da rede. Reinicie o servidor a cada repetição, respeite o intervalo de descanso e registre situações que possam afetar o desempenho.
 
-**Limitações metodológicas:** a medição conta bytes retornados por `recv()` entre timestamps do servidor, não mede tempo de transmissão no enlace, perdas de pacotes, latência individual ou bytes ainda nos buffers do kernel após o deadline. A execução de 10 processos clientes numa máquina também pode saturar a CPU do gerador antes da capacidade do servidor. Esse comportamento deve ser discutido, não interpretado automaticamente como limite do servidor.
+A medição representa os bytes entregues à aplicação por `recv()` dentro do intervalo definido. Ela não mede diretamente perdas de pacotes, latência ou o tempo de transmissão no enlace, e também pode deixar de contabilizar bytes que ainda estejam nos buffers do sistema operacional após o fim do teste. Quando vários clientes rodam na mesma máquina, a CPU responsável por gerar os dados pode limitar a taxa antes mesmo de o servidor atingir sua capacidade. A discussão dos resultados deve considerar essas possibilidades.
 
-## 9. GitHub e relatório
+## 9. Repositório e relatório
 
-O arquivo `RELATORIO_MODELO.md` contém a estrutura solicitada. Crie um repositório público ou privado acessível ao professor, por exemplo:
+O modelo para registrar o ambiente, a metodologia e os resultados está em `RELATORIO_MODELO.md`. Os códigos podem ser publicados em um repositório acessível ao professor. Caso ele ainda não tenha sido criado, os comandos são:
 
 ```bash
 git init
@@ -146,4 +153,4 @@ git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
 git push -u origin main
 ```
 
-**Substitua a URL de exemplo pelo link real** do repositório após criá-lo. No relatório, inclua os links diretos `.../blob/main/chat_client.c` e `.../blob/main/chat_server.c`, além do link do README.
+Substitua a URL de exemplo pelo endereço do seu repositório. No relatório, inclua o link geral do projeto, os links diretos para `.../blob/main/chat_client.c` e `.../blob/main/chat_server.c` e o link do README, para que o professor consiga consultar os códigos e reproduzir os testes.
