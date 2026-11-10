@@ -1,0 +1,12 @@
+# Executáveis
+chat_client
+chat_server
+*.exe
+*.o
+
+# Arquivos temporários do Python
+__pycache__/
+*.pyc
+
+# Resultados locais de experimentos
+resultados_*/
