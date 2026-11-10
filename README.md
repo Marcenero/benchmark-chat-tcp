@@ -136,21 +136,3 @@ O fator 8 converte bytes em bits, e a divisão por `1_000_000` apresenta o resul
 Para comparar os resultados, mantenha iguais as opções de compilação, o tamanho dos blocos, a duração, o tempo de aquecimento, as máquinas e a configuração da rede. Reinicie o servidor a cada repetição, respeite o intervalo de descanso e registre situações que possam afetar o desempenho.
 
 A medição representa os bytes entregues à aplicação por `recv()` dentro do intervalo definido. Ela não mede diretamente perdas de pacotes, latência ou o tempo de transmissão no enlace, e também pode deixar de contabilizar bytes que ainda estejam nos buffers do sistema operacional após o fim do teste. Quando vários clientes rodam na mesma máquina, a CPU responsável por gerar os dados pode limitar a taxa antes mesmo de o servidor atingir sua capacidade. A discussão dos resultados deve considerar essas possibilidades.
-
-## 9. Repositório e relatório
-
-O modelo para registrar o ambiente, a metodologia e os resultados está em `RELATORIO_MODELO.md`. Os códigos podem ser publicados em um repositório acessível ao professor. Caso ele ainda não tenha sido criado, os comandos são:
-
-```bash
-git init
-# Crie o repositório VAZIO no GitHub antes de definir o remote
-# Evite subir binarios e arquivos de resultados contendo informacoes privadas
-printf 'chat_server\nchat_client\nchat_server_original\nchat_client_original\n__pycache__/\n' > .gitignore
-git add .
-git commit -m "Benchmark de throughput TCP para 1 a 10 clientes"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
-git push -u origin main
-```
-
-Substitua a URL de exemplo pelo endereço do seu repositório. No relatório, inclua o link geral do projeto, os links diretos para `.../blob/main/chat_client.c` e `.../blob/main/chat_server.c` e o link do README, para que o professor consiga consultar os códigos e reproduzir os testes.
