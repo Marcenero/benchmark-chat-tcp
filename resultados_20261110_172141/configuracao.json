@@ -1,0 +1,15 @@
+{
+  "clients_min": 1,
+  "clients_max": 10,
+  "repetitions": 5,
+  "duration": 15,
+  "warmup": 2,
+  "block": 65536,
+  "port": 5000,
+  "server_bind": "127.0.0.1",
+  "server_ip": "127.0.0.1",
+  "remote_client": null,
+  "remote_dir": null,
+  "cooldown": 2.0,
+  "seed": 2026
+}

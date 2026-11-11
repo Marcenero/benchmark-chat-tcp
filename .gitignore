@@ -8,8 +8,8 @@ chat_server
 __pycache__/
 *.pyc
 
-# Resultados locais de experimentos
-resultados_*/
-
 # Relatório
 RELATORIO_MODELO.md
+
+# Arquivos originais
+originais/
